@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 
 from model.train_model import MODEL_PATH
-from utils.preprocessing import FEATURE_COLUMNS
 from utils.feature_engineering import add_engineered_features
 
 st.title("🎯 Risk Prediction")
@@ -16,18 +15,6 @@ if not Path(MODEL_PATH).exists():
     st.stop()
 
 model = joblib.load(MODEL_PATH)
-
-# Guardrail for old model files that were trained with different columns.
-if hasattr(model, "feature_names_in_"):
-    model_features = list(model.feature_names_in_)
-    if model_features != FEATURE_COLUMNS:
-        st.error(
-            "Saved model was trained with a different feature set. "
-            "Please retrain from the Model Training page."
-        )
-        st.write("Expected features:", FEATURE_COLUMNS)
-        st.write("Model features:", model_features)
-        st.stop()
 
 col1, col2 = st.columns(2)
 with col1:
@@ -48,15 +35,10 @@ if st.button("Predict Risk"):
             }
         ]
     )
-
-    # Apply same feature engineering used in training.
     input_df = add_engineered_features(input_df)
 
-    # Keep identical feature order as model training.
-    input_features = input_df[FEATURE_COLUMNS]
-
-    prediction = model.predict(input_features)[0]
-    probabilities = model.predict_proba(input_features)[0]
+    prediction = model.predict(input_df)[0]
+    probabilities = model.predict_proba(input_df)[0]
     classes = model.classes_
 
     st.subheader(f"Predicted Risk Level: {prediction}")
