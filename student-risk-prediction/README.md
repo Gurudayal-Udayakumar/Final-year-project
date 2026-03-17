@@ -1,67 +1,121 @@
-# Student Burnout and Dropout Risk Prediction System
+# Student Burnout and Dropout Risk Prediction Platform
 
-This is a **simple ML demo prototype** for predicting student burnout/dropout risk as:
+A beginner-friendly **Machine Learning analytics platform** that predicts student burnout/dropout risk as:
 - Low
 - Medium
 - High
 
-It uses a synthetic dataset and a `RandomForestClassifier` model.
+This upgraded version includes:
+- data exploration
+- feature engineering
+- model training + model comparison
+- interactive risk prediction
+- analytics dashboard
+- explainable AI (SHAP)
+
+---
 
 ## Project Structure
 
 ```text
 student-risk-prediction/
+│
+├── app/
+│   ├── main.py
+│   ├── dashboard.py
+│   └── pages/
+│       ├── 1_Dataset_Explorer.py
+│       ├── 2_Model_Training.py
+│       ├── 3_Risk_Prediction.py
+│       ├── 4_Analytics_Dashboard.py
+│       └── 5_Model_Explainability.py
+│
 ├── data/
 │   └── students.csv
+│
 ├── model/
+│   ├── model_comparison.py
 │   ├── train_model.py
-│   └── student_risk_model.joblib   # created after training
-├── app/
-│   └── dashboard.py
+│   └── student_risk_model.joblib   # generated after training
+│
 ├── utils/
-│   └── preprocessing.py
-├── requirements.txt
-└── README.md
+│   ├── feature_engineering.py
+│   ├── preprocessing.py
+│   └── visualization.py
+│
+└── requirements.txt
 ```
 
-## 1) Install Dependencies
+---
+
+## System Architecture (Simple View)
+
+1. **Dataset Layer**
+   - Loads synthetic student activity data from `data/students.csv`.
+
+2. **Feature Engineering Layer**
+   - Creates:
+     - `engagement_score = (attendance + login_frequency + assignments_submitted) / 3`
+     - `performance_index = attendance * 0.4 + avg_grade * 0.6`
+
+3. **ML Layer**
+   - Trains and compares 3 models:
+     - Logistic Regression
+     - Random Forest
+     - Gradient Boosting
+   - Selects best model by accuracy and saves it with Joblib.
+
+4. **Presentation Layer (Streamlit)**
+   - Multi-page UI with dedicated pages for exploration, training, prediction, analytics, and explainability.
+
+---
+
+## Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 2) Train the Model
+---
+
+## Train the Model
 
 ```bash
-python model/train_model.py
+python -m model.train_model
 ```
 
 This command will:
-- Load the dataset from `data/students.csv`
-- Split data into train/test sets
-- Train a `RandomForestClassifier`
-- Print accuracy and classification report
-- Save the trained model to `model/student_risk_model.joblib`
+- load data
+- engineer features
+- train and compare multiple models
+- choose the best model
+- print evaluation metrics
+- save model to `model/student_risk_model.joblib`
 
-## 3) Run the Streamlit Dashboard
+---
+
+## Run the Streamlit App
 
 ```bash
-streamlit run app/dashboard.py
+python -m streamlit run app/main.py
 ```
 
-The app will open in your browser and let you:
-- Enter attendance
-- Enter assignments submitted
-- Enter login frequency
-- Enter average grade
-- Click **Predict Risk** to get predicted risk level
-- View a bar chart of risk distribution in dataset
+Then open the local URL shown in terminal.
 
-## Notes for Demo Presentation
+---
 
-- Dataset is synthetic and small (~100 rows), made only for prototype demonstration.
-- The model and dashboard are intentionally simple and beginner-friendly.
-- You can explain each file quickly:
-  - `utils/preprocessing.py`: loads and prepares data
-  - `model/train_model.py`: trains/evaluates/saves the model
-  - `app/dashboard.py`: UI and predictions
+## App Pages
+
+- **Home**: intro + navigation help
+- **Dataset Explorer**: preview, stats, missing values, dtypes, histograms, correlation heatmap
+- **Model Training**: one-click training, progress bar, model comparison, confusion matrix, report
+- **Risk Prediction**: slider inputs, predicted risk, probabilities
+- **Analytics Dashboard**: pie chart, boxplot, scatter plot, feature importance, colored risk table
+- **Explainable AI**: SHAP summary plot + explanation text
+
+---
+
+## Notes
+
+- This project is designed for educational demonstrations, not production use.
+- Code is modular and heavily commented for easy explanation in viva/demo.
