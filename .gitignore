@@ -62,8 +62,8 @@ ehthumbs.db
 # Ignore Python egg cache
 .eggs/
 
-# Ignore joblib model artifacts (optional; uncomment if you want model files untracked)
-# *.joblib
+# Ignore joblib model artifacts (model binaries should not be committed)
+*.joblib
 
 # Data files: keep CSV tracked by default, but ignore large data folders if present
 # data/
