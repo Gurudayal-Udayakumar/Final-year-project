@@ -36,6 +36,13 @@ if st.button("Predict Risk"):
         ]
     )
     input_df = add_engineered_features(input_df)
+    # Ensure the input columns match those used during model training
+    if hasattr(model, "feature_names_in_"):
+        expected_cols = list(model.feature_names_in_)
+        input_df = input_df[expected_cols]
+    else:
+        # Fallback to the basic features used by the training scripts
+        input_df = input_df[["attendance", "assignments_submitted", "login_frequency", "avg_grade"]]
 
     prediction = model.predict(input_df)[0]
     probabilities = model.predict_proba(input_df)[0]

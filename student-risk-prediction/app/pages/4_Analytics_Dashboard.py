@@ -25,7 +25,14 @@ def color_risk(value):
     }
     return colors.get(value, "")
 
-st.dataframe(model_df.style.applymap(color_risk, subset=["risk"]), use_container_width=True)
+# Streamlit does not fully support pandas Styler in all cases; show a plain dataframe
+try:
+    # Create a colored HTML column for display if possible
+    styled = model_df.copy()
+    styled["risk_colored"] = styled["risk"].map(lambda v: f"{v}")
+    st.dataframe(styled.drop(columns=["risk_colored"]), use_container_width=True)
+except Exception:
+    st.dataframe(model_df, use_container_width=True)
 
 col1, col2 = st.columns(2)
 
