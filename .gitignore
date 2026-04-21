@@ -65,5 +65,7 @@ ehthumbs.db
 # Ignore joblib model artifacts (model binaries should not be committed)
 *.joblib
 
-# Data files: keep CSV tracked by default, but ignore large data folders if present
-# data/
+# Generated DuckDB databases and large OULAD raw data files
+student-risk-prediction/data/*.duckdb
+student-risk-prediction/data/*.duckdb.*
+student-risk-prediction/data/oulad/

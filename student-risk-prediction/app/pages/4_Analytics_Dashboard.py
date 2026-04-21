@@ -42,29 +42,75 @@ with col1:
     fig_pie = px.pie(risk_counts, names="risk", values="count", title="Risk Distribution")
     st.plotly_chart(fig_pie, use_container_width=True)
 
-    fig_box = px.box(model_df, x="risk", y="attendance", color="risk", title="Attendance vs Risk")
+    fig_box = px.box(model_df, x="risk", y="total_clicks", color="risk", title="Total VLE Clicks vs Risk")
     st.plotly_chart(fig_box, use_container_width=True)
+
+    education_risk = model_df.groupby(["highest_education", "risk"]).size().reset_index(name="students")
+    fig_education = px.bar(
+        education_risk,
+        x="highest_education",
+        y="students",
+        color="risk",
+        barmode="group",
+        title="Risk by Highest Education",
+    )
+    st.plotly_chart(fig_education, use_container_width=True)
 
 with col2:
     fig_scatter = px.scatter(
         model_df,
-        x="avg_grade",
-        y="attendance",
+        x="avg_score",
+        y="total_clicks",
         color="risk",
-        hover_data=["student_id"],
-        title="Grades vs Attendance by Risk",
+        hover_data=["id_student", "code_module", "code_presentation"],
+        title="Assessment Score vs VLE Clicks by Risk",
     )
     st.plotly_chart(fig_scatter, use_container_width=True)
 
+    fig_late = px.box(
+        model_df,
+        x="risk",
+        y="late_submissions",
+        color="risk",
+        title="Late Submissions by Risk",
+    )
+    st.plotly_chart(fig_late, use_container_width=True)
+
+    fig_pi = px.box(
+        model_df,
+        x="risk",
+        y="procrastination_index",
+        color="risk",
+        title="Procrastination Index by Risk",
+    )
+    st.plotly_chart(fig_pi, use_container_width=True)
+
+    fig_drift = px.box(
+        model_df,
+        x="risk",
+        y="days_since_last_drift",
+        color="risk",
+        title="Days Since Last Engagement Drift by Risk",
+    )
+    st.plotly_chart(fig_drift, use_container_width=True)
+
     if Path(MODEL_PATH).exists():
         model = joblib.load(MODEL_PATH)
-        if hasattr(model, "feature_importances_"):
+        final_model = model.named_steps.get("model") if hasattr(model, "named_steps") else model
+        preprocessor = model.named_steps.get("preprocess") if hasattr(model, "named_steps") else None
+        if hasattr(final_model, "feature_importances_"):
+            feature_names = (
+                preprocessor.get_feature_names_out()
+                if preprocessor is not None
+                else model.feature_names_in_
+            )
             importance_df = pd.DataFrame(
                 {
-                    "Feature": model.feature_names_in_,
-                    "Importance": model.feature_importances_,
+                    "Feature": feature_names,
+                    "Importance": final_model.feature_importances_,
                 }
             ).sort_values(by="Importance", ascending=False)
+            importance_df = importance_df.head(20)
             fig_imp = px.bar(importance_df, x="Feature", y="Importance", title="Feature Importance")
             st.plotly_chart(fig_imp, use_container_width=True)
         else:

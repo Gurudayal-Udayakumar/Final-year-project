@@ -1,66 +1,178 @@
-"""Explainable AI page using SHAP values."""
+﻿"""Individual SHAP explainability dashboard for academic advisors."""
 
 from pathlib import Path
+
 import joblib
-import shap
 import pandas as pd
+import shap
 import streamlit as st
-import matplotlib.pyplot as plt
+import streamlit.components.v1 as components
 
 from model.train_model import MODEL_PATH
-from utils.preprocessing import load_dataset, prepare_features_and_target
+from utils.preprocessing import FEATURE_COLUMNS, load_dataset, prepare_features_and_target
 
-st.title("🔍 Explainable AI")
-st.write("This page shows how features influence model decisions using SHAP.")
+
+RISK_THRESHOLD = 0.75
+
+
+@st.cache_resource
+def load_pipeline():
+    """Load the saved sklearn Pipeline once per Streamlit session."""
+    return joblib.load(MODEL_PATH)
+
+
+@st.cache_data(show_spinner="Loading student features from DuckDB...")
+def load_feature_data():
+    """Load model-ready OULAD features from DuckDB."""
+    df = load_dataset()
+    X, _ = prepare_features_and_target(df)
+    metadata_cols = ["id_student", "code_module", "code_presentation", "final_result", "risk"]
+    metadata = df[[col for col in metadata_cols if col in df.columns]].copy()
+    return X, metadata
+
+
+def get_high_risk_probability(pipeline, X: pd.DataFrame):
+    """Run predict_proba and return the probability assigned to High risk."""
+    classes = list(pipeline.classes_)
+    if "High" not in classes:
+        raise ValueError(f"The saved model does not contain a 'High' class. Classes: {classes}")
+    return pipeline.predict_proba(X)[:, classes.index("High")]
+
+
+def select_high_class_values(explainer, shap_values):
+    """Select SHAP expected value and contribution matrix for the High class."""
+    expected_value = explainer.expected_value
+    values = shap_values
+
+    if isinstance(expected_value, (list, tuple)):
+        high_index = 1 if len(expected_value) > 1 else 0
+        expected_value = expected_value[high_index]
+    if isinstance(values, list):
+        high_index = 1 if len(values) > 1 else 0
+        values = values[high_index]
+
+    return expected_value, values
+
+
+def render_force_plot(explainer, shap_values, transformed_row: pd.DataFrame):
+    """Render SHAP's Javascript force plot inside Streamlit."""
+    expected_value, values = select_high_class_values(explainer, shap_values)
+
+    shap.initjs()
+    force_plot = shap.force_plot(
+        expected_value,
+        values[0],
+        transformed_row.iloc[0],
+        feature_names=transformed_row.columns.tolist(),
+        matplotlib=False,
+    )
+    shap_html = f"""
+    <head>{shap.getjs()}</head>
+    <body>{force_plot.html()}</body>
+    """
+    components.html(shap_html, height=340, scrolling=True)
+
+
+st.title("Individual Student Explainability")
+st.write("Review high-risk students and inspect the model factors behind each prediction.")
 
 if not Path(MODEL_PATH).exists():
-    st.warning("Model file not found. Please train model first.")
+    st.warning("Model file not found. Please train the model first.")
     st.stop()
 
-model = joblib.load(MODEL_PATH)
-df = load_dataset()
-X, _ = prepare_features_and_target(df)
+pipeline = load_pipeline()
 
-# Align columns if the saved model stores feature names
-if hasattr(model, "feature_names_in_"):
-    expected = list(model.feature_names_in_)
-    X = X[expected]
+if not hasattr(pipeline, "named_steps"):
+    st.error("The saved model is not a sklearn Pipeline.")
+    st.stop()
 
-sample_size = min(50, len(X))
-X_sample = X.sample(sample_size, random_state=42)
+if "preprocess" not in pipeline.named_steps or "model" not in pipeline.named_steps:
+    st.error("The saved pipeline must contain 'preprocess' and 'model' steps.")
+    st.stop()
 
-def _choose_explainer(m, data):
-    """Return an appropriate SHAP explainer for the model and data."""
-    # Prefer TreeExplainer for tree-based models
-    try:
-        if hasattr(m, "feature_importances_"):
-            return shap.TreeExplainer(m)
-        # Linear models (logistic/regression) - use LinearExplainer
-        if hasattr(m, "coef_"):
-            return shap.LinearExplainer(m, data, feature_perturbation="interventional")
-        # Fallback to KernelExplainer (model-agnostic, slower)
-        return shap.KernelExplainer(lambda x: m.predict_proba(pd.DataFrame(x, columns=data.columns)), data.sample(min(20, len(data)), random_state=1))
-    except Exception:
-        # As a last resort, try TreeExplainer and let it raise a descriptive error
-        return shap.TreeExplainer(m)
+preprocessor = pipeline.named_steps["preprocess"]
+model = pipeline.named_steps["model"]
+
+X, metadata = load_feature_data()
 
 try:
-    explainer = _choose_explainer(model, X_sample)
-    shap_values = explainer.shap_values(X_sample)
-
-    st.subheader("SHAP Summary Plot")
-    fig_summary, ax_summary = plt.subplots(figsize=(10, 5))
-    # For multiclass models SHAP may return a list (one array per class)
-    values_to_plot = shap_values[0] if isinstance(shap_values, list) else shap_values
-    shap.summary_plot(values_to_plot, X_sample, show=False)
-    st.pyplot(fig_summary)
-
-    st.subheader("Feature Importance Explanation")
-    st.write(
-        "Features with larger SHAP magnitude have greater impact on predicted risk. "
-        "Positive SHAP values push predictions toward higher-risk classes, and negative "
-        "values push predictions toward lower-risk classes."
-    )
+    probabilities = get_high_risk_probability(pipeline, X)
 except Exception as exc:
-    st.error(f"Unable to generate SHAP visualizations for this model type: {exc}")
-    st.info("Tip: Train a tree-based best model (Random Forest or Gradient Boosting) for the fastest SHAP TreeExplainer experience.")
+    st.error(f"Unable to calculate risk probabilities: {exc}")
+    st.stop()
+
+results = metadata.copy()
+results["high_risk_probability"] = probabilities
+results["risk_category"] = results["high_risk_probability"].map(
+    lambda probability: "High Risk" if probability > RISK_THRESHOLD else "Monitor"
+)
+
+high_risk = results[results["risk_category"] == "High Risk"].copy()
+high_risk = high_risk.sort_values("high_risk_probability", ascending=False)
+
+st.metric("High Risk Students", len(high_risk))
+st.caption(f"High Risk threshold: probability > {RISK_THRESHOLD:.0%}")
+
+if high_risk.empty:
+    st.info("No students currently exceed the high-risk threshold.")
+    st.stop()
+
+labels = high_risk.apply(
+    lambda row: (
+        f"{row['id_student']} | {row.get('code_module', 'module unknown')} "
+        f"{row.get('code_presentation', '')} | "
+        f"{row['high_risk_probability']:.1%}"
+    ),
+    axis=1,
+).tolist()
+
+selected_label = st.selectbox("Select High Risk Student", labels)
+selected_index = high_risk.index[labels.index(selected_label)]
+
+selected_metadata = results.loc[selected_index]
+selected_row = X.loc[[selected_index], FEATURE_COLUMNS]
+
+st.subheader("Student Risk Snapshot")
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Student ID", str(selected_metadata["id_student"]))
+with col2:
+    st.metric("High Risk Probability", f"{selected_metadata['high_risk_probability']:.1%}")
+with col3:
+    st.metric("Observed Outcome", str(selected_metadata.get("final_result", "Unknown")))
+
+st.dataframe(
+    selected_row.T.rename(columns={selected_index: "value"}),
+    use_container_width=True,
+)
+
+try:
+    transformed_row = preprocessor.transform(selected_row)
+    if not isinstance(transformed_row, pd.DataFrame):
+        transformed_row = pd.DataFrame(
+            transformed_row,
+            columns=preprocessor.get_feature_names_out(),
+        )
+
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(transformed_row)
+    _, high_class_values = select_high_class_values(explainer, shap_values)
+
+    st.subheader("Individual SHAP Force Plot")
+    render_force_plot(explainer, shap_values, transformed_row)
+
+    st.subheader("Top Local Drivers")
+    local_values = high_class_values[0]
+    driver_df = pd.DataFrame(
+        {
+            "Feature": transformed_row.columns,
+            "Feature Value": transformed_row.iloc[0].values,
+            "SHAP Value": local_values,
+            "Absolute Impact": abs(local_values),
+        }
+    ).sort_values("Absolute Impact", ascending=False)
+    st.dataframe(driver_df.head(15), use_container_width=True)
+
+except Exception as exc:
+    st.error(f"Unable to generate individualized SHAP explanation: {exc}")
+    st.info("Confirm the saved model is a fitted LightGBM pipeline with 'preprocess' and 'model' steps.")

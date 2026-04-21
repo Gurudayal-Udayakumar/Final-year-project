@@ -29,8 +29,17 @@ if st.button("Train Model"):
     st.subheader("Model Comparison")
     comparison = results["comparison_df"].copy()
     formatted = comparison.copy()
-    for col in ["Accuracy", "Precision", "Recall", "F1 score"]:
-        formatted[col] = formatted[col].map(lambda x: f"{x:.3f}")
+    metric_columns = [
+        "Accuracy",
+        "Precision",
+        "Recall",
+        "F1 score",
+        "ROC-AUC",
+        "Optimization ROC-AUC",
+    ]
+    for col in metric_columns:
+        if col in formatted.columns:
+            formatted[col] = formatted[col].map(lambda x: f"{x:.3f}")
     st.table(formatted)
 
     fig_acc = px.bar(
@@ -45,10 +54,11 @@ if st.button("Train Model"):
     st.subheader(f"Best Model: {results['best_model_name']}")
 
     st.subheader("Confusion Matrix")
+    classes = results["classes"]
     cm = pd.DataFrame(
         results["confusion_matrix"],
-        index=["True Low", "True Medium", "True High"],
-        columns=["Pred Low", "Pred Medium", "Pred High"],
+        index=[f"True {label}" for label in classes],
+        columns=[f"Pred {label}" for label in classes],
     )
     st.dataframe(cm)
 
