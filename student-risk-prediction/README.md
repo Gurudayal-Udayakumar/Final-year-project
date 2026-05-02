@@ -1,70 +1,109 @@
-﻿# Student Academic Risk Decision Support Platform
+# Student Academic Risk Decision Support Platform
 
 Streamlit decision-support tool for identifying students at academic risk using
-the Open University Learning Analytics Dataset (OULAD).
+a synthetic student analytics dataset.
 
 The current implementation uses:
 
-- DuckDB for the OULAD data layer
-- SQL feature views for engagement, assessments, procrastination, and drift
+- a synthetic CSV dataset with app-ready features
 - scikit-learn pipelines for preprocessing
-- LightGBM for binary risk classification
+- LightGBM for multiclass risk classification
 - Mealpy SCSO for LightGBM hyperparameter optimization
 - SHAP for individualized advisor explanations
 
-## Quick Start
+## What Is Included
 
-From `student-risk-prediction/`:
+- `data/students.csv` for immediate app usage
+- Streamlit pages for exploration, training, prediction, analytics, and explainability
+- a PowerShell launcher script in `run_app.ps1`
+- a synthetic dataset generator in `data/data_generator.py`
+
+## Quick Start For a New User
+
+From `student-risk-prediction/` in PowerShell:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\run_app.ps1
 ```
 
-Place the OULAD CSV files in:
+Then open the local URL printed by Streamlit, usually:
 
 ```text
-data/oulad/
+http://localhost:8501
 ```
 
-Build the local DuckDB database:
+## End-to-End Run Order
 
-```powershell
-.\.venv\Scripts\python.exe -m utils.duckdb_loader
-```
+If you want the smoothest first run, use this order:
 
-Train the model:
+1. Create the virtual environment.
+2. Install dependencies.
+3. Launch the app with `.\run_app.ps1`.
+4. Open **Dataset Explorer** to confirm `data/students.csv` loads correctly.
+5. Open **Model Training** and click **Train Model** to create the latest model artifact.
+6. After training finishes, use **Risk Prediction**, **Analytics Dashboard**, and **Model Explainability**.
 
-```powershell
-.\.venv\Scripts\python.exe -m model.train_model
-```
+## One-Command Launch After Setup
 
-Run the app:
+After the virtual environment and dependencies are already in place, you only need:
 
 ```powershell
 .\run_app.ps1
 ```
 
-or:
+You can also install requirements during launch if the virtual environment already
+exists:
 
 ```powershell
-.\.venv\Scripts\python.exe -m streamlit run app/main.py
+.\run_app.ps1 -InstallRequirements
 ```
 
-## Required OULAD Files
+## Data
+
+The app reads this file by default:
 
 ```text
-data/oulad/assessments.csv
-data/oulad/courses.csv
-data/oulad/studentAssessment.csv
-data/oulad/studentInfo.csv
-data/oulad/studentRegistration.csv
-data/oulad/studentVle.csv
-data/oulad/vle.csv
+data/students.csv
 ```
 
-The OULAD folder and generated `data/student_risk.duckdb` are ignored by Git
-because they are large local data artifacts.
+That file is already included in the repository, so no external dataset download
+is required to open the app.
+
+If you want to regenerate the synthetic dataset:
+
+```powershell
+.\.venv\Scripts\python.exe data\data_generator.py
+```
+
+This overwrites or recreates:
+
+```text
+data/students.csv
+```
+
+See [data/README.md](./data/README.md) for more detail.
+
+## Model Training
+
+The app saves the trained model here:
+
+```text
+model/student_risk_model.joblib
+```
+
+You can train either:
+
+- from the **Model Training** page inside the app, or
+- from the command line:
+
+```powershell
+.\.venv\Scripts\python.exe -m model.train_model
+```
+
+Training the model is recommended after cloning the repository so prediction and
+explainability pages use a fresh local artifact.
 
 ## Project Layout
 
@@ -73,12 +112,13 @@ app/
   main.py                         Streamlit entry point
   pages/                          Multipage app views
 data/
-  README.md                       Data placement instructions
+  README.md                       Synthetic data instructions
+  data_generator.py               Synthetic dataset generator
+  students.csv                    Default app dataset
 model/
   train_model.py                  LightGBM + Mealpy SCSO training
 utils/
-  duckdb_loader.py                OULAD import and DuckDB feature view
-  preprocessing.py                Feature lists and model-ready data loading
+  preprocessing.py                Feature lists and CSV loading helpers
   feature_engineering.py          Procrastination Index helper
   advanced_features.py            CUSUM engagement drift helper
   visualization.py                Plotting helpers
@@ -90,32 +130,56 @@ tools/
 
 ## App Pages
 
-- **Dataset Explorer**: OULAD preview, missing values, distributions, feature correlations
-- **Model Training**: trains the SCSO-optimized LightGBM pipeline
+- **Dataset Explorer**: synthetic dataset preview, missing values, distributions, feature correlations
+- **Model Training**: trains and saves the SCSO-optimized LightGBM pipeline
 - **Risk Prediction**: manual advisor-facing prediction form
 - **Analytics Dashboard**: risk distributions, behavior plots, feature importance
-- **Model Explainability**: high-risk student selector with individualized SHAP force plot
+- **Model Explainability**: student-level SHAP explanations for model output
 
 ## Feature Engineering
 
-The DuckDB `student_features` view includes:
+The dataset includes:
 
 - VLE engagement totals and active days
-- assessment submission counts and scores
-- late submission counts
+- assessment submission counts, scores, and late submissions
 - Procrastination Index
-- CUSUM-based days since last negative engagement drift
-- demographic/course categorical variables from OULAD
+- CUSUM-style days since last negative engagement drift
+- demographic and course categorical variables
+- synthetic final result and risk labels
 
-The model target is binary:
+The model target is multiclass:
 
 ```text
-High      = OULAD final_result is Fail or Withdrawn
-Not High  = OULAD final_result is Pass or Distinction
+High    = final_result is Fail or Withdrawn
+Medium  = final_result is Pass
+Low     = final_result is Distinction
+```
+
+## Troubleshooting
+
+- If `.\run_app.ps1` says the virtualenv Python was not found, create the venv first with
+  `python -m venv .venv`.
+- If dependencies are missing, rerun:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+- If prediction or explainability pages complain about a missing model, train one from
+  the **Model Training** page or run:
+
+```powershell
+.\.venv\Scripts\python.exe -m model.train_model
+```
+
+- If `data/students.csv` is missing or corrupted, regenerate it with:
+
+```powershell
+.\.venv\Scripts\python.exe data\data_generator.py
 ```
 
 ## Notes
 
 - This is an educational decision-support prototype, not a production advising system.
-- Model artifacts are generated locally and ignored by Git.
-- Raw OULAD files are not committed because of size limits.
+- Model artifacts are generated locally.
+- The included dataset is synthetic and intended for demonstration and testing.
