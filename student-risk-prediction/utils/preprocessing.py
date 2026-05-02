@@ -1,14 +1,14 @@
 """Utility functions for loading and preparing student risk data."""
 
 from pathlib import Path
+
 import pandas as pd
 
-from utils.duckdb_loader import DB_PATH, initialize_oulad_db, load_student_features
 
-
-# Build project root dynamically so scripts work from any folder.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = PROJECT_ROOT / "data" / "students.csv"
+
+IDENTIFIER_COLUMNS = ["student_id"]
 
 NUMERIC_FEATURES = [
     "num_of_prev_attempts",
@@ -21,6 +21,13 @@ NUMERIC_FEATURES = [
     "late_submissions",
     "procrastination_index",
     "days_since_last_drift",
+    "registration_delay_days",
+    "days_registered_before_withdrawal",
+    "completion_ratio",
+    "weighted_avg_score",
+    "recent_7_day_clicks",
+    "days_since_last_activity",
+    "engagement_trend",
 ]
 
 CATEGORICAL_FEATURES = [
@@ -35,53 +42,70 @@ CATEGORICAL_FEATURES = [
 ]
 
 FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
+OPTIONAL_COLUMNS = ["final_result", "risk"]
 
 
 def load_dataset(csv_path: Path = DATA_PATH) -> pd.DataFrame:
-    """Load the OULAD student feature dataset from DuckDB."""
-    if not DB_PATH.exists():
-        con = initialize_oulad_db()
-        con.close()
-    return load_student_features()
+    """Load the synthetic student feature dataset from CSV."""
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Dataset not found at {csv_path}")
+
+    df = pd.read_csv(csv_path)
+
+    missing_columns = [column for column in FEATURE_COLUMNS + ["risk"] if column not in df.columns]
+    if missing_columns:
+        raise ValueError(f"Dataset is missing required columns: {missing_columns}")
+
+    for column in NUMERIC_FEATURES:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    for column in CATEGORICAL_FEATURES:
+        df[column] = df[column].fillna("Unknown").replace("", "Unknown").astype(str)
+
+    if "risk" in df.columns:
+        df["risk"] = df["risk"].fillna("Unknown").astype(str)
+
+    if "final_result" in df.columns:
+        df["final_result"] = df["final_result"].fillna("Unknown").astype(str)
+
+    for column in IDENTIFIER_COLUMNS:
+        if column in df.columns:
+            df[column] = df[column].astype(str)
+
+    return df
 
 
 def prepare_features_and_target(df: pd.DataFrame):
     """Split the DataFrame into model features (X) and labels (y)."""
-    # Identifiers and final_result are excluded to avoid leakage.
-    X = df[FEATURE_COLUMNS]
-    y = df["risk"]
+    X = df[FEATURE_COLUMNS].copy()
+    y = df["risk"].copy()
     return X, y
 
 
 def prepare_model_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a cleaned DataFrame ready for display and plotting in Streamlit pages.
-
-    This is a small compatibility wrapper expected by the Streamlit pages. It:
-    - selects the key columns used across the app
-    - fills simple missing values with sensible defaults
-    - ensures numeric columns have proper dtypes
-    """
-    cols = ["id_student", *FEATURE_COLUMNS, "final_result", "risk"]
-    # Keep only available columns to avoid KeyErrors
-    available = [c for c in cols if c in df.columns]
+    """Return a cleaned DataFrame ready for display and plotting in Streamlit pages."""
+    cols = [*IDENTIFIER_COLUMNS, *FEATURE_COLUMNS, *OPTIONAL_COLUMNS]
+    available = [column for column in cols if column in df.columns]
     model_df = df[available].copy()
 
-    # Coerce numeric columns and fill simple missing values
-    for col in NUMERIC_FEATURES:
-        if col in model_df.columns:
-            model_df[col] = pd.to_numeric(model_df[col], errors="coerce")
-            model_df[col] = model_df[col].fillna(model_df[col].median())
+    for column in NUMERIC_FEATURES:
+        if column in model_df.columns:
+            model_df[column] = pd.to_numeric(model_df[column], errors="coerce")
+            median = model_df[column].median()
+            model_df[column] = model_df[column].fillna(0 if pd.isna(median) else median)
 
-    for col in CATEGORICAL_FEATURES:
-        if col in model_df.columns:
-            model_df[col] = model_df[col].fillna("Unknown").astype(str)
+    for column in CATEGORICAL_FEATURES:
+        if column in model_df.columns:
+            model_df[column] = model_df[column].fillna("Unknown").replace("", "Unknown").astype(str)
 
-    # For risk, keep as-is but fill missing with 'unknown'
     if "risk" in model_df.columns:
-        model_df["risk"] = model_df["risk"].fillna("Unknown")
+        model_df["risk"] = model_df["risk"].fillna("Unknown").astype(str)
 
-    # Ensure identifier columns are string dtype to avoid Arrow conversion issues
-    if "id_student" in model_df.columns:
-        model_df["id_student"] = model_df["id_student"].astype(str)
+    if "final_result" in model_df.columns:
+        model_df["final_result"] = model_df["final_result"].fillna("Unknown").astype(str)
+
+    for column in IDENTIFIER_COLUMNS:
+        if column in model_df.columns:
+            model_df[column] = model_df[column].astype(str)
 
     return model_df

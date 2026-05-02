@@ -1,4 +1,4 @@
-"""Train a binary LightGBM academic-risk model optimized with Mealpy SCSO."""
+"""Train a multiclass LightGBM academic-risk model optimized with Mealpy SCSO."""
 
 from pathlib import Path
 
@@ -51,15 +51,9 @@ def save_model(model) -> Path:
 
 
 def train_and_select_best_model(random_state: int = RANDOM_STATE):
-    """Optimize and train a binary LightGBM academic-risk pipeline.
-
-    The original OULAD labels are converted to binary labels:
-    - High risk: original risk label is "High"
-    - Not High risk: original risk label is "Low" or "Medium"
-    """
+    """Optimize and train a multiclass LightGBM academic-risk pipeline."""
     df = load_dataset()
-    X, y_multiclass = prepare_features_and_target(df)
-    y = y_multiclass.map(lambda label: "High" if label == "High" else "Not High")
+    X, y = prepare_features_and_target(df)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -81,17 +75,17 @@ def train_and_select_best_model(random_state: int = RANDOM_STATE):
     best_model.fit(X_train, y_train)
 
     y_pred = best_model.predict(X_test)
-    y_proba = _positive_class_probabilities(best_model, X_test)
+    y_proba = best_model.predict_proba(X_test)
+    high_risk_proba = _high_class_probabilities(best_model, X_test)
 
     accuracy = accuracy_score(y_test, y_pred)
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_test,
         y_pred,
-        pos_label="High",
-        average="binary",
+        average="weighted",
         zero_division=0,
     )
-    roc_auc = roc_auc_score((y_test == "High").astype(int), y_proba)
+    roc_auc = roc_auc_score(y_test, y_proba, labels=list(best_model.classes_), multi_class="ovr", average="weighted")
 
     comparison_df = pd.DataFrame(
         [
@@ -103,6 +97,7 @@ def train_and_select_best_model(random_state: int = RANDOM_STATE):
                 "F1 score": f1,
                 "ROC-AUC": roc_auc,
                 "Optimization ROC-AUC": optimization_auc,
+                "High Risk ROC-AUC": roc_auc_score((y_test == "High").astype(int), high_risk_proba),
             }
         ]
     )
@@ -138,8 +133,14 @@ def optimize_lightgbm_with_scso(
         pipeline = build_lgbm_pipeline(params, random_state=random_state)
         pipeline.fit(X_train, y_train)
 
-        y_proba = _positive_class_probabilities(pipeline, X_test)
-        auc = roc_auc_score((y_test == "High").astype(int), y_proba)
+        y_proba = pipeline.predict_proba(X_test)
+        auc = roc_auc_score(
+            y_test,
+            y_proba,
+            labels=list(pipeline.classes_),
+            multi_class="ovr",
+            average="weighted",
+        )
 
         # Mealpy minimizes, so return negative ROC-AUC to maximize ROC-AUC.
         return -auc
@@ -182,7 +183,8 @@ def _solution_to_lgbm_params(solution) -> dict:
 def build_lgbm_pipeline(params: dict, random_state: int = RANDOM_STATE) -> Pipeline:
     """Build the full preprocessing + LightGBM sklearn pipeline."""
     classifier = LGBMClassifier(
-        objective="binary",
+        objective="multiclass",
+        num_class=3,
         n_estimators=250,
         class_weight="balanced",
         random_state=random_state,
@@ -221,7 +223,7 @@ def build_preprocessor() -> ColumnTransformer:
     return preprocessor
 
 
-def _positive_class_probabilities(pipeline: Pipeline, X):
+def _high_class_probabilities(pipeline: Pipeline, X):
     """Return predicted probabilities for the High-risk class."""
     classes = list(pipeline.classes_)
     high_index = classes.index("High")

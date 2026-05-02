@@ -1,26 +1,26 @@
 """Model training and comparison page."""
 
-from pathlib import Path
-import streamlit as st
-import plotly.express as px
 import pandas as pd
+import plotly.express as px
+import streamlit as st
 
 from model.train_model import MODEL_PATH, save_model, train_and_select_best_model
 
-st.title("🧠 Model Training")
-st.write("Compare multiple machine learning models and save the best one.")
+
+st.title("Model Training")
+st.write("Train the optimized LightGBM pipeline and save the latest fitted model.")
 
 if st.button("Train Model"):
     progress = st.progress(0)
     status = st.empty()
 
-    status.write("Loading data and training models...")
+    status.write("Loading data and training model...")
     progress.progress(30)
 
     results = train_and_select_best_model()
 
     progress.progress(70)
-    status.write("Saving best model...")
+    status.write("Saving trained model...")
     save_model(results["best_model"])
 
     progress.progress(100)
@@ -36,6 +36,7 @@ if st.button("Train Model"):
         "F1 score",
         "ROC-AUC",
         "Optimization ROC-AUC",
+        "High Risk ROC-AUC",
     ]
     for col in metric_columns:
         if col in formatted.columns:

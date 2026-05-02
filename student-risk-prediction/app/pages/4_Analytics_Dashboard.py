@@ -1,40 +1,32 @@
 """Analytics dashboard with interactive Plotly visualizations."""
 
 from pathlib import Path
+
 import joblib
-import streamlit as st
 import pandas as pd
 import plotly.express as px
+import streamlit as st
 
 from model.train_model import MODEL_PATH
 from utils.preprocessing import load_dataset, prepare_model_dataframe
 
-st.title("📈 Analytics Dashboard")
+
+@st.cache_resource
+def load_model():
+    """Load the trained pipeline once per Streamlit session."""
+    return joblib.load(MODEL_PATH)
+
+
+st.title("Analytics Dashboard")
 
 df = load_dataset()
 model_df = prepare_model_dataframe(df)
 
 st.subheader("Student Risk Table")
-
-
-def color_risk(value):
-    colors = {
-        "Low": "background-color: #d4edda; color: #155724",
-        "Medium": "background-color: #fff3cd; color: #856404",
-        "High": "background-color: #f8d7da; color: #721c24",
-    }
-    return colors.get(value, "")
-
-# Streamlit does not fully support pandas Styler in all cases; show a plain dataframe
-try:
-    # Create a colored HTML column for display if possible
-    styled = model_df.copy()
-    styled["risk_colored"] = styled["risk"].map(lambda v: f"{v}")
-    st.dataframe(styled.drop(columns=["risk_colored"]), use_container_width=True)
-except Exception:
-    st.dataframe(model_df, use_container_width=True)
+st.dataframe(model_df, use_container_width=True)
 
 col1, col2 = st.columns(2)
+hover_fields = [field for field in ["student_id", "code_module", "code_presentation", "final_result"] if field in model_df.columns]
 
 with col1:
     risk_counts = model_df["risk"].value_counts().reset_index()
@@ -42,7 +34,7 @@ with col1:
     fig_pie = px.pie(risk_counts, names="risk", values="count", title="Risk Distribution")
     st.plotly_chart(fig_pie, use_container_width=True)
 
-    fig_box = px.box(model_df, x="risk", y="total_clicks", color="risk", title="Total VLE Clicks vs Risk")
+    fig_box = px.box(model_df, x="risk", y="recent_7_day_clicks", color="risk", title="Recent 7 Day Clicks vs Risk")
     st.plotly_chart(fig_box, use_container_width=True)
 
     education_risk = model_df.groupby(["highest_education", "risk"]).size().reset_index(name="students")
@@ -59,11 +51,11 @@ with col1:
 with col2:
     fig_scatter = px.scatter(
         model_df,
-        x="avg_score",
+        x="weighted_avg_score",
         y="total_clicks",
         color="risk",
-        hover_data=["id_student", "code_module", "code_presentation"],
-        title="Assessment Score vs VLE Clicks by Risk",
+        hover_data=hover_fields,
+        title="Weighted Score vs Total Clicks by Risk",
     )
     st.plotly_chart(fig_scatter, use_container_width=True)
 
@@ -76,26 +68,26 @@ with col2:
     )
     st.plotly_chart(fig_late, use_container_width=True)
 
-    fig_pi = px.box(
+    fig_activity = px.box(
         model_df,
         x="risk",
-        y="procrastination_index",
+        y="days_since_last_activity",
         color="risk",
-        title="Procrastination Index by Risk",
+        title="Days Since Last Activity by Risk",
     )
-    st.plotly_chart(fig_pi, use_container_width=True)
+    st.plotly_chart(fig_activity, use_container_width=True)
 
-    fig_drift = px.box(
+    fig_trend = px.box(
         model_df,
         x="risk",
-        y="days_since_last_drift",
+        y="engagement_trend",
         color="risk",
-        title="Days Since Last Engagement Drift by Risk",
+        title="Engagement Trend by Risk",
     )
-    st.plotly_chart(fig_drift, use_container_width=True)
+    st.plotly_chart(fig_trend, use_container_width=True)
 
     if Path(MODEL_PATH).exists():
-        model = joblib.load(MODEL_PATH)
+        model = load_model()
         final_model = model.named_steps.get("model") if hasattr(model, "named_steps") else model
         preprocessor = model.named_steps.get("preprocess") if hasattr(model, "named_steps") else None
         if hasattr(final_model, "feature_importances_"):
@@ -110,8 +102,7 @@ with col2:
                     "Importance": final_model.feature_importances_,
                 }
             ).sort_values(by="Importance", ascending=False)
-            importance_df = importance_df.head(20)
-            fig_imp = px.bar(importance_df, x="Feature", y="Importance", title="Feature Importance")
+            fig_imp = px.bar(importance_df.head(20), x="Feature", y="Importance", title="Feature Importance")
             st.plotly_chart(fig_imp, use_container_width=True)
         else:
             st.info("Feature importance chart is available for tree-based models.")
